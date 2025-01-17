@@ -51,11 +51,11 @@ public class ContentServiceImpl implements ContentService {
     private Mono<Content> findByIdOrElseThrow(UUID contentId) {
         log.debug("Searching for the content {} in the database.", contentId);
         return contentRepository.findById(contentId)
-                .switchIfEmpty(Mono.error(() -> {
-                    log.error("The content {} is not found in the database.", contentId);
-                    //FIXME create exception
-                    return new RuntimeException("The content %s is not found in the database.".formatted(contentId));
-                }));
+            .switchIfEmpty(Mono.error(() -> {
+                log.error("The content {} is not found in the database.", contentId);
+                //FIXME create exception
+                return new RuntimeException("The content %s is not found in the database.".formatted(contentId));
+            }));
     }
 
     @Override
@@ -63,12 +63,12 @@ public class ContentServiceImpl implements ContentService {
     public Mono<Content> findByIdAndAuthorIdOrElseThrow(UUID contentId, UUID authorId) {
         log.debug("Searching for the content {} of the author {} in the database.", contentId, authorId);
         return contentRepository.findByIdAndAuthorId(contentId, authorId)
-                .switchIfEmpty(Mono.error(() -> {
-                    log.error("The content {} of the author {} is not found in the database.", contentId, authorId);
-                    //FIXME create exception
-                    return new RuntimeException("The content %s of the author %s is not found in the database."
-                            .formatted(contentId, authorId));
-                }));
+            .switchIfEmpty(Mono.error(() -> {
+                log.error("The content {} of the author {} is not found in the database.", contentId, authorId);
+                //FIXME create exception
+                return new RuntimeException("The content %s of the author %s is not found in the database."
+                    .formatted(contentId, authorId));
+            }));
     }
 
     @Override
@@ -101,38 +101,38 @@ public class ContentServiceImpl implements ContentService {
         UUID contentId = contentTagsDto.getId();
 
         return findAllTagsByIdsOrElseThrow(tagIds, contentId, authorId)
-                .zipWith(findByIdAndAuthorIdOrElseThrow(contentId, authorId))
-                .flatMap(tuple -> {
-                    List<Tag> tagsToBeProcessed = tuple.getT1();
-                    Content content = tuple.getT2();
+            .zipWith(findByIdAndAuthorIdOrElseThrow(contentId, authorId))
+            .flatMap(tuple -> {
+                List<Tag> tagsToBeProcessed = tuple.getT1();
+                Content content = tuple.getT2();
 
-                    operationOnTags.accept(content.getTags(), tagsToBeProcessed);
+                operationOnTags.accept(content.getTags(), tagsToBeProcessed);
 
-                    log.debug("Updating the content {} with {} tags {} to the database.", contentId, opKeyWord, tagIds);
-                    return contentRepository.save(content);
-                })
-                .then();
+                log.debug("Updating the content {} with {} tags {} to the database.", contentId, opKeyWord, tagIds);
+                return contentRepository.save(content);
+            })
+            .then();
     }
 
     private Mono<List<Tag>> findAllTagsByIdsOrElseThrow(Set<UUID> tagIds, UUID contentId, UUID authorId) {
         log.debug("Searching for the tags {} in the database.", tagIds);
         return tagRepository.findAllById(tagIds)
-                .collectList()
-                .flatMap(tags -> {
-                    List<UUID> nonExistingIds = tags.stream()
-                            .map(Tag::getId)
-                            .filter(e -> !tagIds.contains(e))
-                            .toList();
+            .collectList()
+            .flatMap(tags -> {
+                List<UUID> nonExistingIds = tags.stream()
+                    .map(Tag::getId)
+                    .filter(e -> !tagIds.contains(e))
+                    .toList();
 
-                    if (!nonExistingIds.isEmpty()) {
-                        log.error("Provided non-existing tag IDs {} when updating the content {} by author {}.",
-                                tagIds, contentId, authorId);
-                        return Mono.error(new RuntimeException("Provided non-existing tag IDs %s when updating the content %s by author %s."
-                                .formatted(tagIds, contentId, authorId)));
-                    }
+                if (!nonExistingIds.isEmpty()) {
+                    log.error("Provided non-existing tag IDs {} when updating the content {} by author {}.",
+                        tagIds, contentId, authorId);
+                    return Mono.error(new RuntimeException("Provided non-existing tag IDs %s when updating the content %s by author %s."
+                        .formatted(tagIds, contentId, authorId)));
+                }
 
-                    return Mono.just(tags);
-                });
+                return Mono.just(tags);
+            });
     }
 
 }
