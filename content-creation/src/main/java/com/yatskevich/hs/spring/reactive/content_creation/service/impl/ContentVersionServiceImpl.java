@@ -74,25 +74,20 @@ public class ContentVersionServiceImpl implements ContentVersionService {
 
         if (status.equals(ContentStatus.SUBMITTED)) {
             log.debug("Searching for the content {} in the database.", contentId);
-
-            return contentRepository.findById(contentId)
-                .switchIfEmpty(Mono.error(() -> {
+            return Mono.fromCallable(() -> contentRepository.findById(contentId).orElseThrow(() -> {
                     log.error("The content {} is not found in the database.", contentId);
                     //FIXME create exception
                     return new RuntimeException("The content %s is not found in the database.".formatted(contentId));
                 }))
                 .flatMap(content -> applyLastRevisionToContent(content)
-                    .then(Mono.fromRunnable(() -> {
-                        content.setStatus(ContentStatus.SUBMITTED);
-                    }))
-                    .then(contentRepository.save(content))
+                    .then(Mono.fromRunnable(() -> content.setStatus(ContentStatus.SUBMITTED)))
+                    .then(Mono.fromCallable(() -> contentRepository.save(content)).then())
                 )
                 .then();
 
-
         } else {
             log.debug("Changing the status of the content {} to {} in the database.", contentId, status);
-            return Mono.fromRunnable(() -> contentRepository.updateStatus(contentId, status));
+            return Mono.fromCallable(() -> contentRepository.updateStatus(contentId, status)).then();
         }
     }
 

@@ -7,7 +7,6 @@ import com.yatskevich.hs.spring.reactive.content_creation.repository.RevisionRep
 import com.yatskevich.hs.spring.reactive.content_creation.service.DeltaService;
 import com.yatskevich.hs.spring.reactive.content_creation.service.RevisionService;
 import java.util.Comparator;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,19 +28,20 @@ public class RevisionServiceImpl implements RevisionService {
     public Flux<Revision> getAllByContentIdAndContentAuthorId(UUID contentId, UUID authorId) {
         log.debug("Searching for all the revisions for the content {} of the author {} in the database.",
             contentId, authorId);
-        return revisionRepository.findAllByContentIdAndContentAuthorId(contentId, authorId);
+        return Mono.fromFuture(revisionRepository.findAllByContentIdAndContentAuthorId(contentId, authorId))
+            .flatMapMany(Flux::fromIterable);
     }
 
     @Override
     public Mono<Void> deleteById(UUID contentId) {
         log.debug("Removing all the revisions for the content {} in the database.", contentId);
-        return revisionRepository.deleteAllByContentId(contentId);
+        return Mono.fromFuture(revisionRepository.deleteAllByContentId(contentId));
     }
 
     @Override
     public Mono<Revision> findLastByContentAndAuthor(UUID contentId, UUID authorId) {
         log.debug("Searching for the last revision for the content {} in the database.", contentId);
-        return revisionRepository.findLastByContentIdAndContentAuthorId(contentId, authorId)
+        return Mono.fromFuture(revisionRepository.findLastByContentIdAndContentAuthorId(contentId, authorId))
             .switchIfEmpty(Mono.error(() -> {
                 log.error("There are no revisions of the content {}  in the database.", contentId);
                 //FIXME create exception
@@ -52,28 +52,31 @@ public class RevisionServiceImpl implements RevisionService {
 
     @Override
     public Mono<Revision> create(Content content, RevisionDataDto revisionDataDto) {
-        Optional<Revision> revisionOptional = revisionRepository
-            .findAllByContentIdAndContentAuthorId(content.getId(), content.getAuthorId()).toStream()
-            .max(Comparator.comparingInt(Revision::getRevisionNumber));
+        Mono<Integer> revisionNumberMono = Mono.fromFuture(
+            revisionRepository.findAllByContentIdAndContentAuthorId(content.getId(), content.getAuthorId())
+        ).map(revisions -> revisions.stream()
+            .max(Comparator.comparingInt(Revision::getRevisionNumber))
+            .map(value -> value.getRevisionNumber() + 1)
+            .orElse(1));
 
-        Integer revisionNumber = revisionOptional.map(value -> value.getRevisionNumber() + 1).orElse(1);
+        return revisionNumberMono.flatMap(revisionNumber ->
+            Mono.zip(
+                    deltaService.getDelta(content.getTitle(), revisionDataDto.getContentTitle()),
+                    deltaService.getDelta(content.getDescription(), revisionDataDto.getContentDescription()),
+                    deltaService.getDelta(content.getBody(), revisionDataDto.getContentBody())
+                )
+                .flatMap(tuple -> {
+                        Revision revision = new Revision();
+                        revision.setContent(content);
+                        revision.setRevisionNumber(revisionNumber);
+                        revision.setDescription(revisionDataDto.getDescription());
+                        revision.setTitleDelta(tuple.getT1());
+                        revision.setDescriptionDelta(tuple.getT2());
+                        revision.setBodyDelta(tuple.getT3());
 
-        Revision revision = new Revision();
-        revision.setContent(content);
-        revision.setRevisionNumber(revisionNumber);
-        revision.setDescription(revisionDataDto.getDescription());
-
-        return Mono.zip(
-            deltaService.getDelta(content.getTitle(), revisionDataDto.getContentTitle()),
-            deltaService.getDelta(content.getDescription(), revisionDataDto.getContentDescription()),
-            deltaService.getDelta(content.getBody(), revisionDataDto.getContentBody())
-        ).flatMap(tuple -> {
-            revision.setTitleDelta(tuple.getT1());
-            revision.setDescriptionDelta(tuple.getT2());
-            revision.setBodyDelta(tuple.getT3());
-
-            //TODO check is it correct
-            return revisionRepository.save(revision);
-        });
+                        return Mono.fromCallable(() -> revisionRepository.save(revision));
+                    }
+                )
+        );
     }
 }

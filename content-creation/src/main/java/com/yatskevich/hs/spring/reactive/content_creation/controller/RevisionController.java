@@ -33,6 +33,7 @@ public class RevisionController {
         return contentVersionService.getAllByContentAndAuthor(contentId, authorId);
     }
 
+    //FIXME doesn't work
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Mono<Void> create(@RequestParam UUID authorId,

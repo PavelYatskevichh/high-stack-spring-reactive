@@ -27,7 +27,13 @@ spring:
     virtual:
       enabled: false
 
+  webflux:
+    basePath: /api
+
 server:
-  servlet:
-    contextPath: /api
   port: 8081
+
+logging:
+  level:
+    com:
+      yatskevich: DEBUG

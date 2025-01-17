@@ -39,7 +39,7 @@ public class ContentServiceImpl implements ContentService {
     @Transactional(readOnly = true)
     public Flux<ContentDto> getAll() {
         log.debug("Searching for all the content in the database.");
-        return contentRepository.findAll().map(contentMapper::toDto);
+        return Flux.fromIterable(contentRepository.findAll()).map(contentMapper::toDto);
     }
 
     @Override
@@ -50,19 +50,19 @@ public class ContentServiceImpl implements ContentService {
 
     private Mono<Content> findByIdOrElseThrow(UUID contentId) {
         log.debug("Searching for the content {} in the database.", contentId);
-        return contentRepository.findById(contentId)
-            .switchIfEmpty(Mono.error(() -> {
+        return Mono.fromCallable(() -> contentRepository.findById(contentId).orElseThrow(() -> {
                 log.error("The content {} is not found in the database.", contentId);
                 //FIXME create exception
                 return new RuntimeException("The content %s is not found in the database.".formatted(contentId));
-            }));
+            })
+        );
     }
 
     @Override
     @Transactional(readOnly = true)
     public Mono<Content> findByIdAndAuthorIdOrElseThrow(UUID contentId, UUID authorId) {
         log.debug("Searching for the content {} of the author {} in the database.", contentId, authorId);
-        return contentRepository.findByIdAndAuthorId(contentId, authorId)
+        return Mono.fromFuture(contentRepository.findByIdAndAuthorId(contentId, authorId))
             .switchIfEmpty(Mono.error(() -> {
                 log.error("The content {} of the author {} is not found in the database.", contentId, authorId);
                 //FIXME create exception
@@ -82,7 +82,7 @@ public class ContentServiceImpl implements ContentService {
             .build();
 
         log.debug("Saving new content {} by author {} to the database.", contentDataDto.getTitle(), authorId);
-        return contentRepository.save(content).then();
+        return Mono.fromCallable(() -> contentRepository.save(content)).then();
     }
 
     @Override
@@ -109,15 +109,14 @@ public class ContentServiceImpl implements ContentService {
                 operationOnTags.accept(content.getTags(), tagsToBeProcessed);
 
                 log.debug("Updating the content {} with {} tags {} to the database.", contentId, opKeyWord, tagIds);
-                return contentRepository.save(content);
+                return Mono.fromCallable(() -> contentRepository.save(content));
             })
             .then();
     }
 
     private Mono<List<Tag>> findAllTagsByIdsOrElseThrow(Set<UUID> tagIds, UUID contentId, UUID authorId) {
         log.debug("Searching for the tags {} in the database.", tagIds);
-        return tagRepository.findAllById(tagIds)
-            .collectList()
+        return Mono.fromCallable(() -> tagRepository.findAllById(tagIds))
             .flatMap(tags -> {
                 List<UUID> nonExistingIds = tags.stream()
                     .map(Tag::getId)
